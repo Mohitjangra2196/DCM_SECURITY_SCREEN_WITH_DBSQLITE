@@ -20,7 +20,7 @@ class Command(BaseCommand):
 
         gatepass_data = [
             {
-                'GATEPASS_NO': 'GP0001',
+                'GATEPASS_NO': '0001',
                 'GATEPASS_DATE': datetime.date(2025, 6, 28),
                 'PAYCODE': 'EMP001',
                 'NAME': 'Rahul Sharma',
@@ -44,7 +44,7 @@ class Command(BaseCommand):
                 'LUNCH': 'Y',           # New field value
             },
             {
-                'GATEPASS_NO': 'GP0002',
+                'GATEPASS_NO': '0002',
                 'GATEPASS_DATE': datetime.date(2025, 6, 27),
                 'PAYCODE': 'EMP002',
                 'NAME': 'Priya Singh',
@@ -68,7 +68,7 @@ class Command(BaseCommand):
                 'LUNCH': 'N',           # New field value
             },
             {
-                'GATEPASS_NO': 'GP0003', # Adding a third entry for variety
+                'GATEPASS_NO': '0003', # Adding a third entry for variety
                 'GATEPASS_DATE': datetime.date(2025, 6, 29),
                 'PAYCODE': 'EMP003',
                 'NAME': 'Amit Kumar',

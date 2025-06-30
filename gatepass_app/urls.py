@@ -7,9 +7,9 @@ from django.contrib.auth import views as auth_views
 from rest_framework.routers import DefaultRouter
 
 # Create a router and register our viewsets with it.
-router = DefaultRouter()
-# SecurityGuardViewSet registration is removed.
-router.register(r'gatepasses', views.GatePassViewSet)
+# router = DefaultRouter()
+# # SecurityGuardViewSet registration is removed.
+# router.register(r'gatepasses', views.GatePassViewSet)
 
 
 urlpatterns = [
@@ -28,8 +28,8 @@ urlpatterns = [
     # path('api/get_employee_details/<str:emp_code>/', views.get_employee_details, name='get_employee_details_api'),
 
     # New DRF API Endpoints
-    path('api/', include(router.urls)), # Includes URLs for GatePassViewSet
-    path('api-auth/', include('rest_framework.urls', namespace='rest_framework')), # For DRF browsable API login/logout
+    # path('api/', include(router.urls)), # Includes URLs for GatePassViewSet
+    # path('api-auth/', include('rest_framework.urls', namespace='rest_framework')), # For DRF browsable API login/logout
 
     # Authentication URLs
     path('login/', auth_views.LoginView.as_view(template_name='gatepass_app/login.html'), name='login'),

@@ -80,7 +80,7 @@
         </div>
         
 
-        {# Added Employee Name and Department fields #}
+        <!-- {# Added Employee Name and Department fields #}
         <div class="row mb-3">
             <div class="col-md-6">
                 <div class="form-group">
@@ -121,19 +121,22 @@
                     {% endif %}
                 </div>
             </div>            
-        </div>
+        </div> -->
 
 
         <div class="row mt-4">
             <div class="col-12">
-                <button type="button" id="createEntryButton" class="btn btn-success me-2">Submit</button>
+                <form action="{% url 'create_manual_gatepass_entry' %}" method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger btn-sm mark-button">SUBMIT</button>
+                    </form>
                 <a href="{% url 'mark_in_screen' %}" class="btn btn-secondary">Cancel</a>
             </div>
         </div>
     </form>
 </div>
 
-<script>
+<!-- <script>
     document.addEventListener('DOMContentLoaded', function() {
         const markInTimeInput = document.getElementById('id_MARK_IN_TIME');
         const markOutDurationSelect = document.getElementById('id_mark_out_duration');
@@ -322,6 +325,6 @@
             timeout = setTimeout(() => func.apply(context, args), delay);
         };
     }
-</script>
+</script> -->
 
 {% endblock %}
