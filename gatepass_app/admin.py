@@ -5,9 +5,14 @@ from django.contrib import admin
 # from django.forms import TextInput
 
 from .models import GatePass # Only GatePass is imported now
-
+from .models import emp_details
 # The SecurityGuardAdmin registration is removed.
 
+@admin.register(emp_details)
+class emp_detailsAdmin(admin.ModelAdmin):
+    list_display = ('paycode','employee_name','department_name','unit_name','emp_type')
+    search_fields = ('paycode', 'employee_name', 'department_name')
+    list_filter = ('emp_type', 'department_name')
 
 @admin.register(GatePass)
 class GatePassAdmin(admin.ModelAdmin):

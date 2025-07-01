@@ -27,6 +27,18 @@ class GatePass(models.Model):
     UNIT_NAME = models.CharField(max_length=300, null=True, blank=True) # Represents the unit name EXAMPLE: UNIT-1, UNIT-2, etc.
     EMP_TYPE = models.CharField(max_length=60, null=True, blank=True) # Represents the employee type S =STAFF /W =WORKER
     LUNCH = models.CharField(max_length=3, null=True, blank=True) # Represents the lunch status Y/N
+    duration = models.IntegerField(max_length=3, null=True, blank=True) # Represents the duration of the gatepass in minutes
 
     class Meta:
         db_table = 'GATEPASS' # The actual view name in Oracle
+
+class emp_details(models.Model):
+    paycode = models.CharField(max_length=60, primary_key=True)
+    employee_name = models.CharField(max_length=300, null=True, blank=True)
+    department_name = models.CharField(max_length=300, null=True, blank=True)
+    unit_name = models.CharField(max_length=300, null=True, blank=True)
+    emp_type = models.CharField(max_length=60, null=True, blank=True) # S =STAFF /W =WORKER
+
+
+    class Meta:
+        db_table = 'EMP_DETAILS' # The actual view name in Oracle

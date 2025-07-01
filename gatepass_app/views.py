@@ -2,7 +2,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .models import GatePass
+from .models import GatePass ,emp_details
 from django.db.models import Max
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt 
@@ -53,8 +53,9 @@ def mark_out_screen(request):
         employee_dict = {
             'NAME': employee['NAME'] + ' - ' + employee['PAYCODE'] + ' - ' + employee['EMP_TYPE'],
             'DEPARTMENT_UNIT': employee['DEPARTMENT'] + ' - ' + employee['UNIT_NAME'],
-            'STATUS_TYPE_LUNCH': f"{'ByPass' if employee['AUTH'] == '1' else 'Approved'} - {employee['GATEPASS_TYPE']} - {employee['LUNCH']}",
+            'STATUS_TYPE_LUNCH': f"{'ByPass' if employee['AUTH'] == '1' else 'Approved'} - {employee['GATEPASS_TYPE']} {'+ Lunch' if employee['LUNCH']== 'Y' else ''}",
             'GATEPASS_NO': employee['GATEPASS_NO'],  # Include GATEPASS_NO for processing later
+            'EMP_TYPE': employee['EMP_TYPE'],  # Include EMP_TYPE for display
         }
         employees_to_mark_out.append(employee_dict)
     return render(request, 'gatepass_app/mark_out_screen.html', {'employees': employees_to_mark_out})
@@ -93,6 +94,7 @@ def mark_in_screen(request):
             'NAME' : I['NAME'] + ' - ' + I['PAYCODE'] + ' - ' + I['EMP_TYPE'] ,
             'DEPARTMENT_UNIT' : I['DEPARTMENT'] + ' - ' + I['UNIT_NAME'],
             'OUT_TIME' : I['OUT_TIME'],
+            'EMP_TYPE': I['EMP_TYPE'],  # Include EMP_TYPE for display
         }
         employees_to_mark_in.append(employee_dict)
     return render(request, 'gatepass_app/mark_in_screen.html', {'employees': employees_to_mark_in})
@@ -128,10 +130,8 @@ def create_manual_gatepass_entry(request):
                     GATEPASS_NO=new_gatepass_no,
                     GATEPASS_DATE=current_time.strftime("%Y-%m-%d"),
                     PAYCODE=form.cleaned_data['PAYCODE'] ,
-                    # NAME=form.cleaned_data['EMPLOYEE_NAME'] ,
-                    # DEPARTMENT=form.cleaned_data['DEPARTMENT_NAME'] ,
-                    NAME='MJ',
-                    DEPARTMENT = 'IT',
+                    NAME=form.cleaned_data['EMPLOYEE_NAME'] ,
+                    DEPARTMENT=form.cleaned_data['DEPARTMENT_NAME'] ,
                     GATEPASS_TYPE=form.cleaned_data['GATEPASS_TYPE'] ,
                     REMARKS='Without intimation leave taken - Manual Entry',
                     OUT_TIME=(current_time - timedelta(minutes=int(form.cleaned_data['mark_out_duration']))) ,
@@ -148,7 +148,8 @@ def create_manual_gatepass_entry(request):
                     AUTH1_REMARKS=None,
                     UNIT_NAME='Unit-1',  
                     EMP_TYPE='S',
-                    LUNCH='Y',     
+                    LUNCH='Y',  
+                    duration=int(form.cleaned_data['mark_out_duration'])  # Store the duration in minutes   
                 )
                 messages.success(request, f"Manual Gatepass {new_gatepass_no} created successfully.")
                 return redirect('mark_in_screen')
@@ -160,4 +161,39 @@ def create_manual_gatepass_entry(request):
         form = ManualGatePassForm()
     return render(request, 'gatepass_app/create_manual_gatepass.html', {'form': form})
 
+@login_required
+def get_employee_details(request):
+    employees_data = []
+    if request.method == 'GET':
+        paycode = request.GET.get('paycode', '').strip()
+        duration = request.GET.get('duration', '').strip()
+        
+        if not paycode:
+            return JsonResponse({'error': 'Paycode is required.'}, status=400)
+                                
+        if duration:
+                    try:
+                        duration = int(duration)
+                    except ValueError:
+                        return JsonResponse({'error': 'Invalid duration format. Must be an integer.'}, status=400)                        
+        
+        try:
+                employee = emp_details.objects.get(paycode=paycode)
+                print(f"---------------------paycode : {current_time} duration : {duration}")
+                employee_data = {
+                    'employee_name': employee.employee_name or 'N/A',
+                    'department_name': employee.department_name or 'N/A',
+                    'unit_name': employee.unit_name or 'N/A',
+                    'emp_type': employee.emp_type or 'N/A',
+                    'mark_in' : current_time.strftime("%Y-%m-%d %I:%M:%S %p"),
+                    'mark_out': (current_time - timedelta(minutes=int(duration))).strftime("%Y-%m-%d %I:%M:%S %p") if duration else None,
+
+                }
+                return JsonResponse({'employee': employee_data})
+        except emp_details.DoesNotExist:
+                return JsonResponse({'error': 'Employee not found'}, status=404)
+        except Exception as e:
+            # Catch any other unexpected errors
+            return JsonResponse({'error': f'An unexpected error occurred: {str(e)}'}, status=500)
+    return JsonResponse({'error': 'Only GET requests are allowed for this endpoint.'}, status=405)       
 
