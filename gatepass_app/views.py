@@ -4,7 +4,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.db import connection , transaction # for oracle connects , auto commit and rollback
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt 
+from django.views.decorators.csrf import csrf_exempt
 
 #django.contrib imports
 from django.contrib.auth import get_user_model
@@ -19,12 +19,6 @@ from .forms import ManualGatePassForm, ManualMarkOutForm # Import both forms
 import logging
 logger = logging.getLogger(__name__) # Get an instance of a logger
 
-# DRF Imports
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from .serializers import GatePassSerializer
 
 # Import for timezone handling
 from pytz import timezone as pytz_timezone
@@ -49,23 +43,17 @@ def mark_out_screen(request):
     data = GatePass.objects.filter(
         FINAL_STATUS = 'A',
         INOUT_STATUS = 'X').exclude(
-        EARLY_LATE = 'L', 
+        EARLY_LATE = 'L',
     ).values(
         'NAME','PAYCODE','EMP_TYPE','DEPARTMENT','UNIT_NAME','GATEPASS_DATE',
         'GATEPASS_TYPE','LUNCH','GATEPASS_NO','FINAL_STATUS','SYS_DATE','REQUEST_TIME'
     ).order_by ('-GATEPASS_DATE','-REQUEST_TIME')
 
-    VALID_TIME  = timezone.now().astimezone(DELHI_TIME)  - timedelta(hours=28)
+    VALID_TIME  = timezone.now().astimezone(DELHI_TIME)  - timedelta(hours=24)
 
     for I in data :
-       
-        if I['SYS_DATE'] < VALID_TIME :
-            gatepass_date = I['GATEPASS_DATE'] 
-            Cross = 'YES'
-        else :
-            gatepass_date = ""
-            Cross = 'NO'    
 
+        gatepass_date, Cross = (I['GATEPASS_DATE'], 'YES') if I['SYS_DATE'] < VALID_TIME else ("", 'NO')
         dept_unit = f"{I['DEPARTMENT']}" if 'UNIT' in  I['DEPARTMENT'].upper() else f"{I['DEPARTMENT']} {I['UNIT_NAME']}"
 
         status = 'Approved' if I['FINAL_STATUS'] == 'A' else 'ByPass'
@@ -84,169 +72,102 @@ def mark_out_screen(request):
 
     return render(request, 'gatepass_app/mark_out_screen.html', {'employees': employees_to_mark_out})
 
+
 @login_required
 def markout_cross(request, gatepass_no):
+    return _cross_action(request, gatepass_no, 'mark_out_screen')
+
+@login_required
+def markin_cross (request, gatepass_no):
+    return _cross_action(request, gatepass_no, 'mark_in_screen')
+
+def _cross_action(request, gatepass_no, redirect_url_name):
+    """
+    Helper function to handle the common logic for 'cross' actions (markin_cross, markout_cross).
+    Calls the APPS.GATEPASS_ADJUSTMENT procedure.
+    """
     if request.method == 'POST':
         try:
-            with transaction.atomic(): #if error auto rollback , if success auto commit
+            with transaction.atomic():
                 with connection.cursor() as cursor:
-                    cursor.callproc('APPS.GATEPASS_ADJUSTMENT', [gatepass_no]) #CALLING PROCEDURE
-            
-            messages.success(request, f"Employee with Gatepass No: {gatepass_no} Cancelled successfully.")
+                    cursor.callproc('APPS.GATEPASS_ADJUSTMENT', [gatepass_no])
+
+            messages.success(request, f"Gatepass No: {gatepass_no} processed for cross-date successfully.")
         except Exception as e:
-            # Log the full exception traceback for debugging purposes.
-            # exc_info=True will include the traceback in the log.
-            logger.error(f"Error cancelling Gatepass No: {gatepass_no}: {e}", exc_info=True)
-            messages.error(request, f"Error cancelling Gatepass No: {gatepass_no}. Please try again. Details: {e}")
-        
-        return redirect('mark_out_screen')
-    
-    # If the request is not POST, redirect with a warning message.
+            logger.error(f"Error processing Gatepass No: {gatepass_no}: {e}", exc_info=True)
+            messages.error(request, f"Error processing Gatepass No: {gatepass_no}. Please try again. Details: {e}")
+
+        return redirect(redirect_url_name)
+
     messages.warning(request, "Invalid request method. Please submit the form.")
-    return redirect('mark_out_screen')
+    return redirect(redirect_url_name)
 
 
-    
-
-   
 @login_required
 def process_mark_out(request, gatepass_no):
     if request.method == 'POST':
         current_time_aware_ist = timezone.now().astimezone(DELHI_TIME)
         naive_time_for_oracle = current_time_aware_ist.replace(tzinfo=None)
 
-        security_guard_identifier = request.user.username
-
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE GATEPASS
-                    SET OUT_TIME = :out_time, OUT_BY = :out_by, INOUT_STATUS = 'O'
-                    WHERE GATEPASS_NO = :gatepass_no
-                    """,
-                    {'out_time': naive_time_for_oracle, 'out_by': security_guard_identifier, 'gatepass_no': gatepass_no}
-                )
-                cursor.execute('commit')
-            messages.success(request, f"Employee {gatepass_no} marked out successfully.")
+        try :
+            data = get_object_or_404(GatePass, GATEPASS_NO = gatepass_no)
+            data.OUT_TIME = naive_time_for_oracle
+            data.INOUT_STATUS = 'O'
+            data.OUT_BY = request.user.username
+            data.save()
+            messages.success(request,f"Employee : {data.NAME} Mark out Successfully!")
         except Exception as e:
-            messages.error(request, f"Error marking out employee {gatepass_no}: {e}")
+            logger.error(f"Error : Data not found for Gatepass_no {gatepass_no} : {e}",exc_info=True)
+            messages.error(request,f"Error : Data not found for Gatepass_no {gatepass_no} : {e}")
+
         return redirect('mark_out_screen')
+    messages.warning(request , "Invalid request method. Please submit the form.")
     return redirect('mark_out_screen')
+
 
 @login_required
 def mark_in_screen(request):
     employees_to_mark_in = []
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT GATEPASS_NO, (NAME||' -'||PAYCODE||' -'||EMP_TYPE) NAME, (DEPARTMENT||' -'||UNIT_NAME ) DEPARTMENT, OUT_TIME, OUT_BY ,EMP_TYPE FROM GATEPASS WHERE INOUT_STATUS = 'O' AND EARLY_LATE <> 'E' ORDER BY OUT_TIME DESC")
-        columns = [col[0] for col in cursor.description]
-        raw_employees = cursor.fetchall()
+    data = GatePass.objects.filter(
+       INOUT_STATUS = 'O').exclude(EARLY_LATE = 'E').values(
+           'NAME','PAYCODE','EMP_TYPE','DEPARTMENT','UNIT_NAME','OUT_TIME','SYS_DATE','GATEPASS_NO'
+    ).order_by('-OUT_TIME')
 
-    for row in raw_employees:
-        employee_dict = dict(zip(columns, row))
-
-        raw_out_time_from_db = employee_dict.get('OUT_TIME')
-        if raw_out_time_from_db:
-            if timezone.is_naive(raw_out_time_from_db):
-                aware_time_in_oracle_tz = DELHI_TIME.localize(raw_out_time_from_db)
-                employee_dict['OUT_TIME'] = aware_time_in_oracle_tz
+    VALID_TIME = timezone.now().astimezone(DELHI_TIME)  - timedelta(hours=24)
+    for I in data :
+        Cross = "YES" if I['OUT_TIME'] < VALID_TIME else "NO"
+        dept_name = I['DEPARTMENT'] if 'UNIT' in I['DEPARTMENT'] else  f"{I['DEPARTMENT']} ({I['UNIT_NAME']})"
+        employee_dict = {
+            'NAME_DISPLAY' : f"{I['NAME']} - {I['PAYCODE']} - {I['EMP_TYPE']}",
+            'DEPARTMENT_DISPLAY' : dept_name,
+            'OUT_TIME' : I['OUT_TIME'],
+            'IS_CROSS_DATE' : Cross,
+            'GATEPASS_NO' : I['GATEPASS_NO']
+        }
         employees_to_mark_in.append(employee_dict)
+    return render(request, 'gatepass_app/mark_in_screen.html', {'employees' :employees_to_mark_in})
 
-    return render(request, 'gatepass_app/mark_in_screen.html', {'employees': employees_to_mark_in})
 
 @login_required
 def process_mark_in(request, gatepass_no):
     if request.method == 'POST':
         current_time_aware_ist = timezone.now().astimezone(DELHI_TIME)
         naive_time_for_oracle = current_time_aware_ist.replace(tzinfo=None)
-        security_guard_identifier = request.user.username
 
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE GATEPASS
-                    SET IN_TIME = :in_time, IN_BY = :in_by, INOUT_STATUS = 'I'
-                    WHERE GATEPASS_NO = :gatepass_no
-                    """,
-                    {'in_time': naive_time_for_oracle, 'in_by': security_guard_identifier, 'gatepass_no': gatepass_no}
-                )
-                cursor.execute('commit')
-            messages.success(request, f"Employee {gatepass_no} marked in successfully.")
+            data = get_object_or_404(GatePass,GATEPASS_NO = gatepass_no)
+            data.IN_TIME = naive_time_for_oracle
+            # Fix for request.user.name (assuming it should be username based on process_mark_out)
+            data.IN_BY = request.user.username
+            data.INOUT_STATUS = 'I'
+            data.save()
+            messages.success(request, f"Employee : {data.NAME} is Successfully MARKED IN!") # Added request to messages.success
         except Exception as e:
-            messages.error(request, f"Error marking in employee {gatepass_no}: {e}")
+            logger.error(f"Error : Data not found for Gatepass_no {gatepass_no} : {e}",exc_info=True)
+            messages.error(request,f"Error : Data not found for Gatepass_no {gatepass_no} : {e}")
         return redirect('mark_in_screen')
+    messages.warning(request , "Invalid request method. Please submit the form.")
     return redirect('mark_in_screen')
-
-
-# --- DRF API Views ---
-
-class GatePassViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows GatePass records to be viewed or updated for IN/OUT.
-    """
-    queryset = GatePass.objects.all()
-    serializer_class = GatePassSerializer
-    permission_classes = [IsAuthenticated]
-
-    def update(self, request, *args, **kwargs):
-        partial = False
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-
-        gatepass_no = instance.GATEPASS_NO
-        current_time = timezone.now()
-        security_guard_identifier = request.user.username
-        update_fields = []
-        params = {}
-
-        if 'OUT_TIME' in request.data:
-            update_fields.append("OUT_TIME = :out_time")
-            params['out_time'] = out_time
-        if 'OUT_BY' in request.data:
-            update_fields.append("OUT_BY = :out_by")
-            params['out_by'] = out_by
-        if 'IN_TIME' in request.data:
-            update_fields.append("IN_TIME = :in_time")
-            params['in_time'] = in_time
-        if 'IN_BY' in request.data:
-            update_fields.append("IN_BY = :in_by")
-            params['in_by'] = in_by
-        if 'INOUT_STATUS' in request.data:
-            update_fields.append("INOUT_STATUS = :inout_status")
-            params['inout_status'] = inout_status
-        
-        if 'OUT_BY' not in request.data and 'OUT_TIME' in request.data and out_time:
-            update_fields.append("OUT_BY = :out_by_auto")
-            params['out_by_auto'] = security_guard_identifier
-            inout_status = 'O'
-            update_fields.append("INOUT_STATUS = 'O'")
-
-        if 'IN_BY' not in request.data and 'IN_TIME' in request.data and in_time:
-            update_fields.append("IN_BY = :in_by_auto")
-            params['in_by_auto'] = security_guard_identifier
-            inout_status = 'I'
-            update_fields.append("INOUT_STATUS = 'I'")
-
-        if not update_fields:
-            return Response({"detail": "No updatable fields provided."}, status=status.HTTP_400_BAD_REQUEST)
-
-        sql = f"UPDATE GATEPASS SET {', '.join(update_fields)} WHERE GATEPASS_NO = :gatepass_no"
-        params['gatepass_no'] = gatepass_no
-
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(sql, params)
-                updated_instance = GatePass.objects.get(pk=gatepass_no)
-                serializer = self.get_serializer(updated_instance)
-                return Response(serializer.data)
-        except Exception as e:
-            return Response({"detail": f"Error updating GatePass: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def partial_update(self, request, *args, **kwargs):
-        kwargs['partial'] = True
-        return self.update(request, *args, **kwargs)
 
 
 @login_required
