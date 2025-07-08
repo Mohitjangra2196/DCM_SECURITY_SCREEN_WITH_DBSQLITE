@@ -1,0 +1,59 @@
+{% extends 'gatepass_app/base.html' %}
+{% load tz %} {# Load the timezone template tags #}
+
+{% block title %}Mark In{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Mark In Employees</h1>
+
+<div class="d-flex justify-content-between mb-3">
+    <a class="btn btn-success" href="{% url 'create_manual_gatepass_entry' %}">Create Manual Entry</a>
+    <a class="btn btn-outline-danger" href="{% url 'mark_out_screen' %}">Go to Mark Out Screen</a>
+</div>
+
+{% if employees %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead class="thead-dark">
+            <tr>
+                <th>Name</th>
+                <th>Department</th>
+                <th>Out Time</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for employee in employees %}
+            <tr>
+                {% if employee.EMP_TYPE == 'S'%}
+                <td style="background-color: aquamarine;">{{ employee.NAME }}</td>
+                {% else %}
+                <td style="background-color: rgba(245, 168, 219, 0.623);">{{ employee.NAME }}</td>
+                {% endif %}
+                <td>{{ employee.DEPARTMENT }}</td>
+                <td>
+                    {# Display the datetime object directly, Django's date filter will format it #}
+                    {# The timezone conversion is now handled in views.py making it IST aware #}
+                    {% if employee.OUT_TIME %}
+                        {{ employee.OUT_TIME|date:"Y-m-d H:i:s A" }} {# Added 'A' for AM/PM #}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                <td>
+                    <form action="{% url 'process_mark_in' gatepass_no=employee.GATEPASS_NO %}" method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm mark-button">Mark In</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info" role="alert">
+    No employees OUT!
+</div>
+{% endif %}
+{% endblock %}

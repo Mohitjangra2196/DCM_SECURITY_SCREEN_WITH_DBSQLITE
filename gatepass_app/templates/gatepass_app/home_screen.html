@@ -1,0 +1,67 @@
+{% extends 'gatepass_app/base.html' %}
+{% load static %}
+
+{% block title %}Home{% endblock %}
+
+{% block extra_head %}
+    {# Add Font Awesome for icons on the buttons #}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <style>
+        /* Custom style to make the entire button a uniform, clickable block */
+        .btn-block-link {
+            display: block;
+            width: 100%;
+            color: white; /* Set text color to white for better contrast */
+            text-decoration: none; /* Remove underline from text */
+        }
+        .btn-block-link:hover {
+            color: white; /* Keep text white on hover */
+            text-decoration: none;
+        }
+    </style>
+{% endblock %}
+
+
+{% block content %}
+<h1 class="mb-4 text-center">Staff GatePass</h1>
+<h3 class="mb-4 text-center">GatePass not Required for HOD's</h3>
+
+<div class="row text-center">
+    <div class="col-md-6 mb-4">
+        <a href="{% url 'mark_out_screen' %}" class="btn btn-danger p-5 shadow btn-block-link">
+            <i class="fas fa-sign-out-alt fa-3x mb-3"></i>
+            <h2 class="h4">Mark Out Employee</h2>
+            <p class="mb-0">Record the departure of an employee.</p>
+        </a>
+    </div>
+    <div class="col-md-6 mb-4">
+        <a href="{% url 'mark_in_screen' %}" class="btn btn-success p-5 shadow btn-block-link">
+            <i class="fas fa-sign-in-alt fa-3x mb-3"></i>
+            <h2 class="h4">Mark In Employee</h2>
+            <p class="mb-0">Record the arrival of an employee.</p>
+        </a>
+    </div>
+</div>
+
+<hr class="my-4">
+
+<h2 class="mb-4">Security Guard Details</h2>
+<div class="row">
+    {% for guard in security_guards %}
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">{{ guard.first_name }} {{ guard.last_name }} ({{ guard.username }})</h5>
+                <p class="card-text"><strong>Last Login:</strong> {{ guard.last_login|default:"Never" }}</p>
+                <p class="card-text"><strong>Joined On:</strong> {{ guard.date_joined|date:"d M Y" }}</p>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <p>No security guards registered yet.</p>
+    </div>
+    {% endfor %}
+</div>
+
+{% endblock %}
