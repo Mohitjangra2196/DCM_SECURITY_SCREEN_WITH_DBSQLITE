@@ -21,11 +21,14 @@ logger = logging.getLogger(__name__) # Get an instance of a logger
 
 
 # Import for timezone handling
-from pytz import timezone as pytz_timezone
 from django.utils import timezone
-from django.conf import settings
-from datetime import datetime, timedelta, time
-DELHI_TIME = pytz_timezone('Asia/Kolkata') # Define the Oracle server's actual timezone (IST)
+from django.conf import settings 
+import pytz
+from datetime import timedelta ,datetime
+
+
+
+DELHI_TIME = pytz.timezone('Asia/Kolkata')
 
 
 User = get_user_model() # Get the currently active user model (which is now Django's default User)
@@ -49,13 +52,12 @@ def mark_out_screen(request):
         'GATEPASS_TYPE','LUNCH','GATEPASS_NO','FINAL_STATUS','SYS_DATE','REQUEST_TIME'
     ).order_by ('-GATEPASS_DATE','-REQUEST_TIME')
 
-    VALID_TIME  = timezone.now().astimezone(DELHI_TIME)  - timedelta(hours=24)
+    VALID_TIME  = timezone.now().astimezone()  - timedelta(hours=24)
 
     for I in data :
-
         gatepass_date, Cross = (I['GATEPASS_DATE'], 'YES') if I['SYS_DATE'] < VALID_TIME else ("", 'NO')
         dept_unit = f"{I['DEPARTMENT']}" if 'UNIT' in  I['DEPARTMENT'].upper() else f"{I['DEPARTMENT']} {I['UNIT_NAME']}"
-
+       
         status = 'Approved' if I['FINAL_STATUS'] == 'A' else 'ByPass'
         lunch = ' + Lunch' if  I['LUNCH'] == 'A' else ' '
         processed_employee_data = {
@@ -71,6 +73,30 @@ def mark_out_screen(request):
         employees_to_mark_out.append(processed_employee_data)
 
     return render(request, 'gatepass_app/mark_out_screen.html', {'employees': employees_to_mark_out})
+
+
+@login_required
+def mark_in_screen(request):
+    employees_to_mark_in = []
+    data = GatePass.objects.filter(
+       INOUT_STATUS = 'O').exclude(EARLY_LATE = 'E').values(
+           'NAME','PAYCODE','EMP_TYPE','DEPARTMENT','UNIT_NAME','OUT_TIME','SYS_DATE','GATEPASS_NO'
+    ).order_by('-OUT_TIME')
+
+    VALID_TIME = timezone.now().astimezone()  - timedelta(hours=24)
+    for I in data :
+        Cross = "YES" if I['OUT_TIME'] < VALID_TIME else "NO"
+        dept_name = I['DEPARTMENT'] if 'UNIT' in I['DEPARTMENT'] else  f"{I['DEPARTMENT']} ({I['UNIT_NAME']})"
+        employee_dict = {
+            'NAME_DISPLAY' : f"{I['NAME']} - {I['PAYCODE']} - {I['EMP_TYPE']}",
+            'DEPARTMENT_DISPLAY' : dept_name,
+            'OUT_TIME' : I['OUT_TIME'],
+            'IS_CROSS_DATE' : Cross,
+            'GATEPASS_NO' : I['GATEPASS_NO'],
+            'EMP_TYPE' : I['EMP_TYPE']
+        }
+        employees_to_mark_in.append(employee_dict)
+    return render(request, 'gatepass_app/mark_in_screen.html', {'employees' :employees_to_mark_in})
 
 
 @login_required
@@ -106,19 +132,19 @@ def _cross_action(request, gatepass_no, redirect_url_name):
 @login_required
 def process_mark_out(request, gatepass_no):
     if request.method == 'POST':
-        current_time_aware_ist = timezone.now().astimezone(DELHI_TIME)
-        naive_time_for_oracle = current_time_aware_ist.replace(tzinfo=None)
-
         try :
             data = get_object_or_404(GatePass, GATEPASS_NO = gatepass_no)
-            data.OUT_TIME = naive_time_for_oracle
+            data.OUT_TIME = timezone.now().replace(microsecond=0).replace(tzinfo=None) + timedelta(hours= 11)
+            if data.EL_MIN :
+                data.IN_TIME = timezone.now().replace(microsecond=0).replace(tzinfo=None) + timedelta(hours= 11 , minutes= data.EL_MIN)
+                data.IN_BY = 'System'     
             data.INOUT_STATUS = 'O'
             data.OUT_BY = request.user.username
             data.save()
             messages.success(request,f"Employee : {data.NAME} Mark out Successfully!")
         except Exception as e:
-            logger.error(f"Error : Data not found for Gatepass_no {gatepass_no} : {e}",exc_info=True)
-            messages.error(request,f"Error : Data not found for Gatepass_no {gatepass_no} : {e}")
+            logger.error(f"Error :with Gatepass no :{gatepass_no} : {e}",exc_info=True)
+            messages.error(request,f"Error : with  Gatepass no : {gatepass_no} : {e}")
 
         return redirect('mark_out_screen')
     messages.warning(request , "Invalid request method. Please submit the form.")
@@ -126,45 +152,18 @@ def process_mark_out(request, gatepass_no):
 
 
 @login_required
-def mark_in_screen(request):
-    employees_to_mark_in = []
-    data = GatePass.objects.filter(
-       INOUT_STATUS = 'O').exclude(EARLY_LATE = 'E').values(
-           'NAME','PAYCODE','EMP_TYPE','DEPARTMENT','UNIT_NAME','OUT_TIME','SYS_DATE','GATEPASS_NO'
-    ).order_by('-OUT_TIME')
-
-    VALID_TIME = timezone.now().astimezone(DELHI_TIME)  - timedelta(hours=24)
-    for I in data :
-        Cross = "YES" if I['OUT_TIME'] < VALID_TIME else "NO"
-        dept_name = I['DEPARTMENT'] if 'UNIT' in I['DEPARTMENT'] else  f"{I['DEPARTMENT']} ({I['UNIT_NAME']})"
-        employee_dict = {
-            'NAME_DISPLAY' : f"{I['NAME']} - {I['PAYCODE']} - {I['EMP_TYPE']}",
-            'DEPARTMENT_DISPLAY' : dept_name,
-            'OUT_TIME' : I['OUT_TIME'],
-            'IS_CROSS_DATE' : Cross,
-            'GATEPASS_NO' : I['GATEPASS_NO']
-        }
-        employees_to_mark_in.append(employee_dict)
-    return render(request, 'gatepass_app/mark_in_screen.html', {'employees' :employees_to_mark_in})
-
-
-@login_required
 def process_mark_in(request, gatepass_no):
     if request.method == 'POST':
-        current_time_aware_ist = timezone.now().astimezone(DELHI_TIME)
-        naive_time_for_oracle = current_time_aware_ist.replace(tzinfo=None)
-
         try:
             data = get_object_or_404(GatePass,GATEPASS_NO = gatepass_no)
-            data.IN_TIME = naive_time_for_oracle
-            # Fix for request.user.name (assuming it should be username based on process_mark_out)
+            data.IN_TIME = timezone.now().replace(microsecond=0).replace(tzinfo=None) + timedelta(hours= 11)
             data.IN_BY = request.user.username
             data.INOUT_STATUS = 'I'
             data.save()
-            messages.success(request, f"Employee : {data.NAME} is Successfully MARKED IN!") # Added request to messages.success
+            messages.success(request, f"Employee : {data.NAME} is Successfully MARKED IN!")
         except Exception as e:
-            logger.error(f"Error : Data not found for Gatepass_no {gatepass_no} : {e}",exc_info=True)
-            messages.error(request,f"Error : Data not found for Gatepass_no {gatepass_no} : {e}")
+            logger.error(f"Error :with Gatepass no :{gatepass_no} : {e}",exc_info=True)
+            messages.error(request,f"Error : with  Gatepass no : {gatepass_no} : {e}")
         return redirect('mark_in_screen')
     messages.warning(request , "Invalid request method. Please submit the form.")
     return redirect('mark_in_screen')
